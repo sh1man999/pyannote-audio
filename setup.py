@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+from pkg_resources import VersionConflict, require
 from setuptools import find_packages, setup
 
 with open("README.md", mode="r", encoding="utf-8") as f:
@@ -10,6 +11,11 @@ with open("README.md", mode="r", encoding="utf-8") as f:
 with open("requirements.txt", mode="r", encoding="utf-8") as f:
     requirements = f.read().splitlines()
 
+try:
+    require("setuptools>=38.3")
+except VersionConflict:
+    print("Error: version of setuptools is too old (<38.3)!")
+    sys.exit(1)
 
 
 ROOT_DIR = Path(__file__).parent.resolve()
@@ -50,9 +56,9 @@ if __name__ == "__main__":
             "Intended Audience :: Science/Research",
             "License :: OSI Approved :: MIT License",
             "Natural Language :: English",
-            "Programming Language :: Python :: 3.8",
             "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
             "Topic :: Scientific/Engineering",
         ],
     )
