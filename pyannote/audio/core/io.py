@@ -30,17 +30,18 @@ pyannote.audio relies on torchaudio for reading and resampling.
 import math
 import random
 import warnings
+from dataclasses import dataclass
 from io import IOBase
 from pathlib import Path
 from typing import Mapping, Optional, Text, Tuple, Union
 
 import numpy as np
+import soundfile as sf
+import torch
 import torch.nn.functional as F
 import torchaudio
 from pyannote.core import Segment
 from torch import Tensor
-
-torchaudio.set_audio_backend("soundfile")
 
 AudioFile = Union[Text, Path, IOBase, Mapping]
 
@@ -57,20 +58,51 @@ integer to load a specific channel: {"audio": "stereo.wav", "channel": 0}
 """
 
 
-def get_torchaudio_info(file: AudioFile):
-    """Protocol preprocessor used to cache output of torchaudio.info
+@dataclass
+class AudioMetaData:
+    """Replacement for torchaudio.backend.common.AudioMetaData
+    (removed in torchaudio 2.9, along with torchaudio.info)."""
+
+    sample_rate: int
+    num_frames: int
+    num_channels: int
+    bits_per_sample: int
+    encoding: str
+
+
+_BITS_PER_SAMPLE = {
+    "PCM_S8": 8,
+    "PCM_U8": 8,
+    "PCM_16": 16,
+    "PCM_24": 24,
+    "PCM_32": 32,
+    "FLOAT": 32,
+    "DOUBLE": 64,
+    "ALAW": 8,
+    "ULAW": 8,
+}
+
+
+def get_torchaudio_info(file: AudioFile) -> AudioMetaData:
+    """Protocol preprocessor used to cache audio metadata
 
     This is useful to speed future random access to this file, e.g.
     in dataloaders using Audio.crop a lot....
     """
 
-    info = torchaudio.info(file["audio"])
+    info = sf.info(file["audio"])
 
     # rewind if needed
     if isinstance(file["audio"], IOBase):
         file["audio"].seek(0)
 
-    return info
+    return AudioMetaData(
+        sample_rate=info.samplerate,
+        num_frames=info.frames,
+        num_channels=info.channels,
+        bits_per_sample=_BITS_PER_SAMPLE.get(info.subtype, 0),
+        encoding=info.subtype or "",
+    )
 
 
 class Audio:
@@ -291,7 +323,10 @@ class Audio:
             sample_rate = file["sample_rate"]
 
         elif "audio" in file:
-            waveform, sample_rate = torchaudio.load(file["audio"])
+            data, sample_rate = sf.read(
+                file["audio"], dtype="float32", always_2d=True
+            )
+            waveform = torch.from_numpy(data.T)
 
             # rewind if needed
             if isinstance(file["audio"], IOBase):
@@ -400,19 +435,24 @@ class Audio:
 
         else:
             try:
-                data, _ = torchaudio.load(
-                    file["audio"], frame_offset=start_frame, num_frames=num_frames
+                raw, _ = sf.read(
+                    file["audio"],
+                    start=start_frame,
+                    frames=num_frames,
+                    dtype="float32",
+                    always_2d=True,
                 )
+                data = torch.from_numpy(raw.T)
                 # rewind if needed
                 if isinstance(file["audio"], IOBase):
                     file["audio"].seek(0)
             except RuntimeError:
                 if isinstance(file["audio"], IOBase):
-                    msg = "torchaudio failed to seek-and-read in file-like object."
+                    msg = "soundfile failed to seek-and-read in file-like object."
                     raise RuntimeError(msg)
 
                 msg = (
-                    f"torchaudio failed to seek-and-read in {file['audio']}: "
+                    f"soundfile failed to seek-and-read in {file['audio']}: "
                     f"loading the whole file instead."
                 )
 

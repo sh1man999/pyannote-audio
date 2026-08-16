@@ -40,17 +40,16 @@ from pyannote.audio.core.io import AudioFile
 from pyannote.audio.core.model import CACHE_DIR
 from pyannote.audio.pipelines.utils import PipelineModel, get_model
 
-backend = torchaudio.get_audio_backend()
 try:
     from speechbrain.pretrained import (
         EncoderClassifier as SpeechBrain_EncoderClassifier,
     )
 
     SPEECHBRAIN_IS_AVAILABLE = True
-except ImportError:
+# AttributeError: old speechbrain versions probe removed torchaudio backend API
+# (torchaudio.list_audio_backends) at import time on torchaudio >= 2.9
+except (ImportError, AttributeError):
     SPEECHBRAIN_IS_AVAILABLE = False
-finally:
-    torchaudio.set_audio_backend(backend)
 
 try:
     from nemo.collections.asr.models import (
